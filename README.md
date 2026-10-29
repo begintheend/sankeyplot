@@ -1,7 +1,7 @@
 # sankeyplot
 
 Draws the stacked Sankey diagram from the Excel workbook
-`Stacked_column_stroke_blacks_noAF.xlsx` with ggplot2, with or without the
+"Stacked_column_stroke_blacks_noAF.xlsx" with ggplot2, with or without the
 white space between bands and between bars and ribbons. Includes the stroke
 risk-factor data from the workbook and the write-up as a vignette.
 
