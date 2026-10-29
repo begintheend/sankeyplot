@@ -1,0 +1,172 @@
+---
+title: "Recreating the Excel Sankey Chart in ggplot2"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Recreating the Excel Sankey Chart in ggplot2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The Excel workbook "Stacked_column_stroke_blacks_noAF.xlsx" contains a "Sankey" chart showing how much five risk factors contributed to stroke in Blacks from 1990 to 2010. At each year the risk factors are stacked as bars, largest on top, and each risk factor's bars are joined by ribbons. This document recreates that chart in ggplot2, matching the Excel version's colours, opacity, text and white space, and then shows it with and without the white space.
+
+## Set up
+
+I load the packages used below.
+
+```{r setup, message = FALSE}
+library(sankeyplot)
+library(dplyr)
+library(ggplot2)
+```
+
+## Read the data
+
+The data from the Data sheet of the Excel file are included in the package as "stroke_blacks", with one row per risk factor and year.
+
+```{r}
+par_long <- stroke_blacks
+par_long
+```
+
+## Work out where each band sits
+
+Within each year, I sort the risk factors from smallest to largest, so the
+smallest is at the bottom. Then I stack them, leaving a gap of 0.05 under each band, which is the value of "h_space" in the Excel workbook.
+
+Each year takes up 3 units along the x axis: a flat bar 2 units wide, followed by a 1-unit ribbon to the next year. The label goes in the middle of each bar.
+
+```{r}
+gap <- 0.05
+
+bands <- par_long %>%
+  group_by(year) %>%
+  arrange(par, .by_group = TRUE) %>%
+  mutate(position = row_number(),
+         lower = cumsum(par) - par + position * gap,
+         upper = lower + par,
+         mid   = (lower + upper) / 2) %>%
+  ungroup() %>%
+  mutate(j = match(year, sort(unique(year))) - 1,  # 0 for 1990, 1 for 1995, ...
+         x_mid = 3 * j + 1)                         # centre of each bar
+
+bands %>% filter(year == 1990)
+```
+
+## Turn each band into a shape
+
+Each risk factor becomes one polygon. Its outline runs left to right along the tops of its bars, then right to left back along the bottoms. A first plot with ggplot2's default style checks that the shapes are right.
+
+```{r}
+outline <- function(d) {
+  d <- arrange(d, j)
+  x <- as.vector(rbind(3 * d$j, 3 * d$j + 2))  # left and right edge of each bar
+  tibble(x = c(x, rev(x)),
+         y = c(rep(d$upper, each = 2), rev(rep(d$lower, each = 2))))
+}
+
+polys <- bands %>%
+  group_by(risk_factor) %>%
+  group_modify(~ outline(.x)) %>%
+  ungroup()
+
+ggplot(polys, aes(x, y, group = risk_factor, fill = risk_factor)) +
+  geom_polygon()
+```
+
+## Style it like the Excel chart
+
+These settings come from the Excel chart:
+
+* **Colours:** the five series colours used in Excel, fully opaque.
+* **Band outline:** Excel draws each band as many lines 4.25 pt thick, so each band is outlined in its own colour at 4.25 pt. This is why a value of 0.00 still shows as a thin strip, as in Excel.
+* **White lines:** 1.5 pt white lines separate each bar from its ribbons.
+* **Text:** values in bold white 10 pt in the middle of each bar; years in
+  12 pt above the bars; risk factor names on the left; an 18 pt bold title.
+* **Axes:** x from -2 to 15 and y from 0.01 to 1.8, as in Excel.
+
+"pt()" converts Excel's line widths in points into ggplot2's units, and
+`excel_label()` rounds the way Excel does, so 0.045 shows as 0.05 rather than 0.04.
+
+```{r, fig.width = 9.48, fig.height = 7.25}
+cols <- c(Obesity = "#4D6D94", Diabetes = "#DA654F", Smoking = "#7EACC5",
+          Hypercholesterolemia = "#D88F54", Hypertension = "#8ABA8F")
+
+pt <- function(points) points * 96 / 72 / .pt   # Excel points -> ggplot linewidth
+excel_label <- function(x) formatC(floor(x * 100 + 0.5 + 1e-9) / 100,
+                                   format = "f", digits = 2)
+
+top <- max(bands$upper)
+first_year <- filter(bands, j == 0)
+
+ggplot() +
+  geom_polygon(data = polys,
+               # Copy Excel's thick lines
+               aes(x, y, group = risk_factor, fill = risk_factor, colour = risk_factor),
+               linewidth = pt(4.25), linejoin = "round") +
+  geom_segment(data = data.frame(x = c(2, 3, 5, 6, 8, 9, 11, 12)),
+               aes(x = x, xend = x), y = 0, yend = 1.1 * top,
+               colour = "white", linewidth = pt(1.5)) +
+  geom_text(data = bands, aes(x_mid, mid, label = excel_label(par)),
+            colour = "white", fontface = "bold", size = 10 / .pt) +
+  geom_text(data = distinct(bands, year, x_mid),
+            aes(x_mid, label = year), y = 1.05 * top, size = 12 / .pt) +
+  scale_fill_manual(values = cols) +
+  scale_colour_manual(values = cols) +
+  scale_y_continuous(breaks = first_year$mid, labels = first_year$risk_factor) +
+  coord_cartesian(xlim = c(-2, 15), ylim = c(0.01, 1.8),
+                  expand = FALSE, clip = "off") +
+  labs(title = "Risk Factors for Stroke in Blacks") +
+  theme_void() +
+  theme(legend.position = "none",
+        plot.background = element_rect(fill = "white", colour = NA),
+        axis.text.y = element_text(size = 12, hjust = 1, margin = margin(r = 4)),
+        plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+        plot.margin = margin(12, 16, 12, 12))
+```
+
+## Versions with and without white space
+
+There are two kinds of white space in the chart:
+
+* the vertical **gap** between bands of different colours;
+* the **white lines** between a bar and the ribbons of the same colour.
+
+The package function "sankey_plot()" does all the steps above for any dataset, and switches each kind of white space on or off.
+
+```{r, fig.width = 9.48, fig.height = 7.25}
+sankey_plot(stroke_blacks, title = "With both kinds of white space")
+sankey_plot(stroke_blacks, gap = 0, title = "Without the gap between colours")
+sankey_plot(stroke_blacks, white_lines = FALSE,
+            title = "Without the lines between bar and ribbon")
+sankey_plot(stroke_blacks, gap = 0, white_lines = FALSE,
+            title = "Without any white space")
+```
+
+Without the gap, bands of different colours touch. Without the white lines,
+each risk factor becomes one continuous shape.
+
+## Other datasets
+
+"sankey_plot()" works with any data frame that has a category, a time and a
+value column. Here is a small made-up example:
+
+```{r, fig.width = 8, fig.height = 6}
+toy <- data.frame(
+  team   = rep(c("Red", "Blue", "Green", "Gold"), times = 4),
+  season = rep(2021:2024, each = 4),
+  share  = c(40, 30, 20, 10,  35, 33, 22, 10,  25, 35, 28, 12,  20, 30, 26, 24)
+)
+
+sankey_plot(toy, category = "team", time = "season", value = "share",
+            gap = 4, digits = 0,
+            colours = c(Red = "#DA654F", Blue = "#4D6D94",
+                        Green = "#8ABA8F", Gold = "#D88F54"),
+            title = "Made-up shares by season")
+```

@@ -1,0 +1,26 @@
+Package: sankeyplot
+Title: Ranked, Stacked Sankey Diagrams with 'ggplot2'
+Version: 0.1.0
+Authors@R: 
+    person("Haiqing", "Deng", email = "dhaiqingsunny@gmail.com",
+              role = c("aut", "cre"))
+Description: Draws the stacked Sankey diagram from the Excel workbook
+    'Stacked_column_stroke_blacks_noAF.xlsx' with 'ggplot2'. At each time
+    point the categories are stacked in order of size and joined by ribbons.
+    The white space between bands and between bars and ribbons can be
+    switched on or off. Includes the stroke risk-factor data from the
+    workbook.
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+License: MIT + file LICENSE
+Imports: 
+    dplyr,
+    ggplot2
+Depends: 
+    R (>= 2.10)
+LazyData: true
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
